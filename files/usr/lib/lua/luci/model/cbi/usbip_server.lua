@@ -9,7 +9,8 @@ if not ucic:get("usbip_server", "config") then
         registration_mode = "all",
         device_list = "",
         server_port = "3240",
-        auto_bind = "1"
+        auto_bind = "1",
+        allow_local_use = "1"   -- 新增默认配置项
     })
     ucic:commit("usbip_server")
 end
@@ -17,8 +18,7 @@ end
 m = Map("usbip_server", i18n("USBIP Server Configuration"),
     i18n([[Share your OpenWRT USB devices over TCP/IP network. 
     Install <a href="https://github.com/vadimgrn/usbip-win2" target="_blank">usbip-win2</a> 
-    client software on your Windows computers. 
-    This package is generated with DeepSeek AI technology.]]))
+    client software on your Windows computers.]]))
 
 function m.on_after_commit(self)
     local ucic = uci.cursor()
@@ -67,6 +67,12 @@ mode:value("whitelist", i18n("Specific Devices (Whitelist)"))
 mode:value("blacklist", i18n("All Except Specific Devices (Blacklist)"))
 mode.default = "all"
 
+-- 新增配置项：允许本地使用未被远程 attach 的设备
+local_use = s:option(Flag, "allow_local_use", i18n("Allow Local Use"),
+    i18n("Enable local usage of USB devices when not attached by remote clients"))
+local_use.default = "1"
+local_use.rmempty = false
+
 function get_usb_devices()
     local devices = {}
     local sysfs_devices = sys.exec("ls /sys/bus/usb/devices/ 2>/dev/null | grep -E '^[0-9]+-[0-9]+(\\.[0-9]+)*$'")
@@ -75,7 +81,6 @@ function get_usb_devices()
     local configured_devices = ucic:get_list("usbip_server", "config", "device_list")
     local detected_devices = {}
     
-    -- 修复正则表达式，使用正确的方式处理换行符
     for device in string.gmatch(sysfs_devices, "[^\n]+") do
         local vendor = sys.exec(string.format("cat /sys/bus/usb/devices/%s/idVendor 2>/dev/null", device)) or "unknown"
         local product = sys.exec(string.format("cat /sys/bus/usb/devices/%s/idProduct 2>/dev/null", device)) or "unknown"
@@ -87,20 +92,16 @@ function get_usb_devices()
         manufacturer = manufacturer:gsub("^%s*(.-)%s*$", "%1")
         product_name = product_name:gsub("^%s*(.-)%s*$", "%1")
         
-        -- 通过USB设备类别(bDeviceClass)来准确识别hub设备，Hub设备类别为09
         local device_class = sys.exec(string.format("cat /sys/bus/usb/devices/%s/bDeviceClass 2>/dev/null", device)) or ""
         device_class = device_class:gsub("%s+", "")
         if device_class ~= "09" then
             local display_name = string.format("%s - %s %s (%s:%s)", device, manufacturer, product_name, vendor, product)
-            
             devices[device] = display_name
             detected_devices[device] = true
         end
     end
     
-    -- 修复处理已配置设备列表的逻辑，确保正确处理空格分隔的值
     for _, value in ipairs(configured_devices) do
-        -- 如果值包含空格，尝试分割并单独处理每个设备ID
         if string.find(value, "%s") then
             for busid in string.gmatch(value, "([^%s]+)") do
                 if not detected_devices[busid] then
@@ -108,7 +109,6 @@ function get_usb_devices()
                 end
             end
         elseif not detected_devices[value] then
-            -- 处理单个设备ID
             devices[value] = string.format("%s - %s", value, i18n("Plugged out"))
         end
     end
@@ -131,7 +131,6 @@ for busid, display_name in pairs(usb_devices) do
     has_devices = true
 end
 
--- 如果没有可用设备，添加提示信息
 if not has_devices then
     devices.description = devices.description .. "<br/><br/><span style='color: #ff0000;'>" .. i18n("No USB devices available") .. "</span>"
 end
