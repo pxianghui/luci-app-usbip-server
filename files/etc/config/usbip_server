@@ -1,6 +1,7 @@
-config usbip_server 'config'
-    option enabled '0'
-    option registration_mode 'all'
-    option device_list ''
-    option server_port '3240'
-    option auto_bind '1'
+config usbip_server 'settings'
+    option enabled '1'                # 默认启用服务
+    option device_mode 'all'          # 设备共享模式: all/whitelist/blacklist
+    option device_list ''             # 白名单或黑名单设备列表
+    option server_port '3240'         # 服务端口
+    option auto_bind '1'              # 自动绑定设备
+    option allow_local_use '1'        # 新增: 未被远程使用时允许本地使用
